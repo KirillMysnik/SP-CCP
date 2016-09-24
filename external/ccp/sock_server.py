@@ -1,13 +1,12 @@
 from select import select
 import socket
-
-from listeners.tick import GameThread
+from threading import Thread
 
 from .sock_client import SockClient
 
 
-class SockServer(GameThread):
-    def __init__(self, host, port, whitelist=(), client_accept_callback=None):
+class SockServer(Thread):
+    def __init__(self, addr, whitelist=(), client_accept_callback=None):
         super().__init__()
 
         self.running = False
@@ -16,14 +15,14 @@ class SockServer(GameThread):
         self.client_accept_callback = client_accept_callback
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((host, port))
+        self.sock.bind(addr)
 
     def remove_client(self, client):
         self.clients.remove(client)
 
     def run(self):
         self.running = True
-        self.sock.listen(3)
+        self.sock.listen()
 
         r, w, e = select([self.sock], [], [])
         while self.running:
@@ -36,8 +35,7 @@ class SockServer(GameThread):
 
                 client = SockClient(self, client_sock)
                 self.clients.append(client)
-                if self.client_accept_callback is not None:
-                    self.client_accept_callback(client)
+                self.on_client_accept(addr, client)
 
                 client.start()
 
@@ -52,3 +50,7 @@ class SockServer(GameThread):
             client.stop()
 
         self.sock.close()
+
+    def on_client_accept(self, addr, client):
+        if self.client_accept_callback is not None:
+            self.client_accept_callback(addr, client)

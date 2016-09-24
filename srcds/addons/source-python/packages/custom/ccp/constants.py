@@ -1,0 +1,26 @@
+from enum import IntEnum
+
+
+OUT_BYTES_COMM_ACCEPTED = b"\x01"
+OUT_BYTES_NOBODY_HOME = b"\x02"
+OUT_BYTES_COMM_ERROR = b"\x03"
+OUT_BYTES_PROTOCOL_ERROR = b"\x04"
+OUT_BYTES_DATA = b"\x05"
+OUT_BYTES_COMM_END = b"\x0A"
+IN_BYTES_COMM_START_REQUEST_BASED = b"\x01"
+IN_BYTES_COMM_START_RAW = b"\x02"
+IN_BYTES_DATA = b"\x05"
+IN_BYTES_COMM_END = b"\x0A"
+
+
+class CommunicationMode(IntEnum):
+    UNDEFINED = 0
+    REQUEST_BASED = 1
+    RAW = 2
+    END_REQUEST_SENT = 3
+    ENDED = 4
+    ERROR = 5
+    CONNECTING = 6
+    CONNECTED = 7
+
+
