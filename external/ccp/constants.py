@@ -22,5 +22,3 @@ class CommunicationMode(IntEnum):
     ERROR = 5
     CONNECTING = 6
     CONNECTED = 7
-
-
