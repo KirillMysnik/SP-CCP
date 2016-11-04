@@ -72,11 +72,11 @@ class RawReceiverMeta(type):
 class RawReceiver(WeakAutoUnload, metaclass=RawReceiverMeta):
     abstract = True
 
-    def __init__(self, addr, raw_methods):
+    def __init__(self, addr, ccp_receive_client):
         self.addr = addr
-        self.send_data = raw_methods.send_data
-        self.stop = raw_methods.stop
-        self._unload = raw_methods.unload
+        self.send_data = ccp_receive_client.raw_send_data
+        self.stop = ccp_receive_client.raw_stop
+        self._unload = ccp_receive_client.raw_unload
 
     def _unload_instance(self):
         self._unload()
@@ -86,20 +86,6 @@ class RawReceiver(WeakAutoUnload, metaclass=RawReceiverMeta):
 
     def on_connection_abort(self):
         return NotImplemented
-
-
-class RawMethodsWrap:
-    def __init__(self, ccp_client):
-        self._ccp_client = ccp_client
-
-    def send_data(self, data):
-        self._ccp_client.raw_send_data(data)
-
-    def stop(self):
-        self._ccp_client.raw_stop()
-
-    def unload(self):
-        self._ccp_client.raw_unload()
 
 
 class CCPReceiveClient:
@@ -166,9 +152,7 @@ class CCPReceiveClient:
 
                         try:
                             self._raw_receiver = raw_receiver_class(
-                                self.addr[:],
-                                RawMethodsWrap(self)
-                            )
+                                self.addr[:], self)
                         except:
                             self._mode = CommunicationMode.END_REQUEST_SENT
                             self.sock_client.send_message(OUT_BYTES_COMM_ERROR)
