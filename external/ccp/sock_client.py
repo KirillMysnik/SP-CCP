@@ -10,18 +10,14 @@ class ConnectionClose(OSError):
     pass
 
 
-class SockClient(Thread):
-    def __init__(self, sock_server, sock, message_receive_callback=None,
-                 connection_abort_callback=None,
-                 connection_close_callback=None):
+class ConnectionAbort(OSError):
+    pass
 
-        super().__init__()
 
+class BaseSockClient:
+    def __init__(self, sock_server, sock):
         self._sock_server = sock_server
         self.sock = sock
-        self._message_receive_callback = message_receive_callback
-        self._connection_abort_callback = connection_abort_callback
-        self._connection_close_callback = connection_close_callback
 
         self.running = False
 
@@ -47,7 +43,7 @@ class SockClient(Thread):
 
             total_sent += sent
 
-    def receive_message(self):
+    def _receive_message(self):
         # Parse message length - first LENGTH_BYTES bytes
         length_bytes = self._read_sock(LENGTH_BYTES)
         if length_bytes is None:
@@ -64,6 +60,45 @@ class SockClient(Thread):
         length_bytes = length.to_bytes(LENGTH_BYTES, byteorder='big')
         self._write_sock(length_bytes + message)
 
+    def stop(self):
+        if not self.running:
+            return
+
+        if self._sock_server is not None:
+            self._sock_server.remove_client(self)
+
+        self.running = False
+
+        self.sock.close()
+
+
+class SockClient(BaseSockClient):
+    def receive_message(self):
+        try:
+            message = self._receive_message()
+        except OSError:
+            self.stop()
+            raise ConnectionAbort("Connection aborted")
+
+        if message is None:
+            self.stop()
+            raise ConnectionClose("Connection closed")
+        else:
+            return message
+
+
+class AsyncSockClient(BaseSockClient, Thread):
+    def __init__(self, sock_server, sock, message_receive_callback=None,
+                 connection_abort_callback=None,
+                 connection_close_callback=None):
+
+        BaseSockClient.__init__(self, sock_server, sock)
+        Thread.__init__(self)
+
+        self._message_receive_callback = message_receive_callback
+        self._connection_abort_callback = connection_abort_callback
+        self._connection_close_callback = connection_close_callback
+
     def run(self):
         self.running = True
 
@@ -71,7 +106,7 @@ class SockClient(Thread):
         while self.running:
             if self.sock in r:
                 try:
-                    message = self.receive_message()
+                    message = self._receive_message()
                 except OSError:
                     self.stop()
                     self.on_connection_abort()
@@ -85,17 +120,6 @@ class SockClient(Thread):
 
             if self.running:
                 r, w, e = select([self.sock], [], [])
-
-    def stop(self):
-        if not self.running:
-            return
-
-        if self._sock_server is not None:
-            self._sock_server.remove_client(self)
-
-        self.running = False
-
-        self.sock.close()
 
     def on_message_receive(self, message):
         if self._message_receive_callback is not None:

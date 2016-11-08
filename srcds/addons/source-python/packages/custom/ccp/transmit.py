@@ -14,10 +14,10 @@ from .constants import OUT_BYTES_COMM_ERROR
 from .constants import OUT_BYTES_DATA
 from .constants import OUT_BYTES_NOBODY_HOME
 from .constants import OUT_BYTES_PROTOCOL_ERROR
-from .sock_client import SockClient
+from .sock_client import AsyncSockClient
 
 
-class SRCDSClient(WeakAutoUnload, GameThread):
+class AsyncSRCDSClient(WeakAutoUnload, GameThread):
     def __init__(self, addr, plugin_name, connection_error_callback=None,
                  comm_accepted_callback=None, nobody_home_callback=None,
                  comm_end_callback=None, protocol_error_callback=None,
@@ -46,7 +46,8 @@ class SRCDSClient(WeakAutoUnload, GameThread):
 
     def run(self):
         if self._mode != CommunicationMode.UNDEFINED:
-            raise ValueError("SRCDSClient instances can be only started once")
+            raise ValueError(
+                "AsyncSRCDSClient instances can be only started once")
 
         self._mode = CommunicationMode.CONNECTING
         try:
@@ -67,7 +68,7 @@ class SRCDSClient(WeakAutoUnload, GameThread):
 
             self._mode = CommunicationMode.CONNECTED
 
-            self.sock_client = SockClient(
+            self.sock_client = AsyncSockClient(
                 None, self.sock, self._message_receive_callback,
                 self.on_connection_abort, self.on_connection_abort)
 

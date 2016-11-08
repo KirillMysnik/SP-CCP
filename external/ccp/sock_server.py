@@ -2,7 +2,7 @@ from select import select
 import socket
 from threading import Thread
 
-from .sock_client import SockClient
+from .sock_client import AsyncSockClient
 
 
 class SockServer(Thread):
@@ -33,7 +33,7 @@ class SockServer(Thread):
                     client_sock.close()
                     continue
 
-                client = SockClient(self, client_sock)
+                client = AsyncSockClient(self, client_sock)
                 self.clients.append(client)
                 self.on_client_accept(addr, client)
 

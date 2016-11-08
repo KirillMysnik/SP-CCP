@@ -11,7 +11,7 @@ class ConnectionClose(OSError):
     pass
 
 
-class SockClient(GameThread):
+class AsyncSockClient(GameThread):
     def __init__(self, sock_server, sock, message_receive_callback=None,
                  connection_abort_callback=None,
                  connection_close_callback=None):
@@ -91,14 +91,12 @@ class SockClient(GameThread):
         if not self.running:
             return
 
-        print("Removing client from server...")
         if self._sock_server is not None:
             self._sock_server.remove_client(self)
 
         self.running = False
 
         self.sock.close()
-        print("Closed socket.")
 
     def on_message_receive(self, message):
         if self._message_receive_callback is not None:

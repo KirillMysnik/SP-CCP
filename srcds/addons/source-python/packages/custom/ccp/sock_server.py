@@ -3,7 +3,7 @@ import socket
 
 from listeners.tick import GameThread
 
-from .sock_client import SockClient
+from .sock_client import AsyncSockClient
 
 
 class SockServer(GameThread):
@@ -34,7 +34,7 @@ class SockServer(GameThread):
                     client_sock.close()
                     continue
 
-                client = SockClient(self, client_sock)
+                client = AsyncSockClient(self, client_sock)
                 self.clients.append(client)
                 self.on_client_accept(addr, client)
 

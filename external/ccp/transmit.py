@@ -12,21 +12,159 @@ from .constants import OUT_BYTES_COMM_ERROR
 from .constants import OUT_BYTES_DATA
 from .constants import OUT_BYTES_NOBODY_HOME
 from .constants import OUT_BYTES_PROTOCOL_ERROR
-from .sock_client import SockClient
+from .sock_client import AsyncSockClient, SockClient
 
 
-class SRCDSClient(Thread):
+class ConnectionEstablishmentError(OSError):
+    pass
+
+
+class CommunicationEnded(Exception):
+    pass
+
+
+class ProtocolError(Exception):
+    pass
+
+
+class CommunicationAccepted(Exception):
+    pass
+
+
+class NobodyHome(Exception):
+    pass
+
+
+class CommunicationError(Exception):
+    pass
+
+
+class BaseSRCDSClient:
+    def __init__(self, addr, plugin_name):
+        self.addr = addr
+        self.plugin_name = plugin_name
+        self._mode = CommunicationMode.UNDEFINED
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock_client = None
+
+    def set_mode(self, mode):
+        if self._mode != CommunicationMode.CONNECTED:
+            raise ValueError(
+                "Communication mode can only be set once and cannot be set "
+                "before connection has been established")
+
+        if mode not in (
+                CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
+            raise ValueError(
+                "Communication mode should be set either to "
+                "CommunicationMode.REQUEST_BASED or CommunicationMode.RAW")
+
+        self._mode = mode
+        plugin_name = self.plugin_name.encode('utf-8')
+        if mode == CommunicationMode.REQUEST_BASED:
+            self.sock_client.send_message(
+                IN_BYTES_COMM_START_REQUEST_BASED + plugin_name)
+
+        else:
+            self.sock_client.send_message(
+                IN_BYTES_COMM_START_RAW + plugin_name)
+
+    def send_data(self, data):
+        if self._mode not in (
+                CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
+            raise ValueError(
+                "send_data can only be called if the communication mode is "
+                "set to either CommunicationMode.REQUEST_BASED or "
+                "CommunicationMode.RAW")
+
+        if not isinstance(data, bytes):
+            if isinstance(data, str):
+                data = data.encode('utf-8')
+            else:
+                raise ValueError("send_data only accepts bytes or str values")
+
+        self.sock_client.send_message(IN_BYTES_DATA + data)
+
+    def stop(self):
+        if self._mode not in (
+                CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
+            raise ValueError(
+                "stop can only be called if the communication mode is "
+                "set to either CommunicationMode.REQUEST_BASED or "
+                "CommunicationMode.RAW")
+
+        self._mode = CommunicationMode.ENDED
+        self.sock_client.send_message(IN_BYTES_COMM_END)
+        self.sock_client.stop()
+
+
+class SRCDSClient(BaseSRCDSClient):
+    def __init__(self, addr, plugin_name):
+        super().__init__(addr, plugin_name)
+
+        self._mode = CommunicationMode.CONNECTING
+        try:
+            self.sock.connect(self.addr)
+
+        except OSError:
+            raise ConnectionEstablishmentError(
+                "Couldn't connect to {host}:{port}".format(
+                    host=addr[0], port=addr[1]))
+
+        else:
+            self._mode = CommunicationMode.CONNECTED
+
+            self.sock_client = SockClient(None, self.sock)
+
+    def receive_data(self):
+        message = self.sock_client.receive_message()
+        code, data = message[:1], message[1:]
+
+        if code == OUT_BYTES_COMM_END:
+            self._mode = CommunicationMode.ENDED
+            self.sock_client.send_message(IN_BYTES_COMM_END)
+            self.sock_client.stop()
+            raise CommunicationEnded("Received OUT_BYTES_COMM_END")
+
+        if code == OUT_BYTES_PROTOCOL_ERROR:
+            self._mode = CommunicationMode.ERROR
+            self.sock_client.stop()
+            raise ProtocolError("Received OUT_BYTES_PROTOCOL_ERROR")
+
+        if code == OUT_BYTES_COMM_ACCEPTED:
+            raise CommunicationAccepted("Received OUT_BYTES_COMM_ACCEPTED")
+
+        if code == OUT_BYTES_NOBODY_HOME:
+            self._mode = CommunicationMode.ENDED
+            self.sock_client.send_message(IN_BYTES_COMM_END)
+            self.sock_client.stop()
+            raise NobodyHome("Received OUT_BYTES_NOBODY_HOME")
+
+        if code == OUT_BYTES_COMM_ERROR:
+            self._mode = CommunicationMode.ENDED
+            self.sock_client.send_message(IN_BYTES_COMM_END)
+            self.sock_client.stop()
+            raise CommunicationError("Received OUT_BYTES_COMM_ERROR")
+
+        if code == OUT_BYTES_DATA:
+            return data
+
+        # Handle invalid codes
+        self._mode = CommunicationMode.ERROR
+        self.sock_client.stop()
+        raise ProtocolError("Received unknown code")
+
+
+class AsyncSRCDSClient(BaseSRCDSClient, Thread):
     def __init__(self, addr, plugin_name, connection_error_callback=None,
                  comm_accepted_callback=None, nobody_home_callback=None,
                  comm_end_callback=None, protocol_error_callback=None,
                  comm_error_callback=None, data_received_callback=None,
                  connected_callback=None, connection_abort_callback=None):
 
-        super().__init__()
-
-        self.addr = addr
-        self.plugin_name = plugin_name
-        self._mode = CommunicationMode.UNDEFINED
+        BaseSRCDSClient.__init__(self, addr, plugin_name)
+        Thread.__init__(self)
 
         self._connection_error_callback = connection_error_callback
         self._comm_accepted_callback = comm_accepted_callback
@@ -37,9 +175,6 @@ class SRCDSClient(Thread):
         self._data_received_callback = data_received_callback
         self._connected_callback = connected_callback
         self._connection_abort_callback = connection_abort_callback
-
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock_client = None
 
     def run(self):
         if self._mode != CommunicationMode.UNDEFINED:
@@ -55,13 +190,12 @@ class SRCDSClient(Thread):
         else:
             self._mode = CommunicationMode.CONNECTED
 
-            self.sock_client = SockClient(
+            self.sock_client = AsyncSockClient(
                 None, self.sock, self._message_receive_callback,
                 self.on_connection_abort, self.on_connection_abort)
 
-            self.sock_client.start()
-
             self.on_connected()
+            self.sock_client.start()
 
     def on_connection_error(self):
         """Called when connection to the host didn't succeed."""
@@ -166,55 +300,11 @@ class SRCDSClient(Thread):
 
             return
 
-    def set_mode(self, mode):
-        if self._mode != CommunicationMode.CONNECTED:
-            raise ValueError(
-                "Communication mode can only be set once and cannot be set "
-                "before connection has been established")
-
-        if mode not in (
-                CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
-
-            raise ValueError(
-                "Communication mode should be set either to "
-                "CommunicationMode.REQUEST_BASED or CommunicationMode.RAW")
-
-        self._mode = mode
-        plugin_name = self.plugin_name.encode('utf-8')
-        if mode == CommunicationMode.REQUEST_BASED:
-            self.sock_client.send_message(
-                IN_BYTES_COMM_START_REQUEST_BASED + plugin_name)
-
-        else:
-            self.sock_client.send_message(
-                IN_BYTES_COMM_START_RAW + plugin_name)
-
-    def send_data(self, data):
-        if self._mode not in (
-                CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
-
-            raise ValueError(
-                "send_data can only be called if the communication mode is "
-                "set to either CommunicationMode.REQUEST_BASED or "
-                "CommunicationMode.RAW")
-
-        if not isinstance(data, bytes):
-            if isinstance(data, str):
-                data = data.encode('utf-8')
-            else:
-                raise ValueError("send_data only accepts bytes or str values")
-
-        self.sock_client.send_message(IN_BYTES_DATA + data)
+        # Handle invalid codes
+        self._mode = CommunicationMode.ERROR
+        self.sock_client.stop()
+        self.on_protocol_error()
 
     def stop(self):
-        if self._mode not in (
-                CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
-            raise ValueError(
-                "stop can only be called if the communication mode is "
-                "set to either CommunicationMode.REQUEST_BASED or "
-                "CommunicationMode.RAW")
-
-        self._mode = CommunicationMode.ENDED
-        self.sock_client.send_message(IN_BYTES_COMM_END)
-        self.sock_client.stop()
+        super().stop()
         self.on_comm_end()
