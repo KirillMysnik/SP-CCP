@@ -58,7 +58,12 @@ class RawReceiverMeta(type):
             return
 
         if not hasattr(cls, 'plugin_name'):
-            raise ValueError("Class '{}' doesn't have 'plugin_name' attribute")
+            raise ValueError(
+                "Class '{}' doesn't have 'plugin_name' attribute".format(cls))
+
+        if cls.plugin_name is None:
+            raise ValueError("Class '{}' has its 'plugin_name' "
+                             "attribute set to None".format(cls))
 
         if cls.plugin_name in _raw_receiver_classes:
             raise ValueError(
@@ -71,6 +76,7 @@ class RawReceiverMeta(type):
 
 class RawReceiver(WeakAutoUnload, metaclass=RawReceiverMeta):
     abstract = True
+    plugin_name = None
 
     def __init__(self, addr, ccp_receive_client):
         self.addr = addr
@@ -82,10 +88,10 @@ class RawReceiver(WeakAutoUnload, metaclass=RawReceiverMeta):
         self._unload()
 
     def on_data_received(self, data):
-        return NotImplemented
+        pass
 
     def on_connection_abort(self):
-        return NotImplemented
+        pass
 
 
 class CCPReceiveClient:
@@ -105,6 +111,7 @@ class CCPReceiveClient:
         code, data = message[:1], message[1:]
 
         if code == IN_BYTES_COMM_END:
+            self.on_connection_abort()
             self._raw_receiver = None
             self._mode = CommunicationMode.ENDED
             self.sock_client.stop()
@@ -211,7 +218,8 @@ class CCPReceiveClient:
         if self._mode != CommunicationMode.RAW:
             raise ValueError(
                 "raw_unload can only be called if the communication mode "
-                "is set to CommunicationMode.RAW")
+                "is set to CommunicationMode.RAW (current mode: {})".format(
+                    self._mode))
 
         self._raw_receiver = None
         self._mode = CommunicationMode.END_REQUEST_SENT
@@ -221,7 +229,8 @@ class CCPReceiveClient:
         if self._mode != CommunicationMode.RAW:
             raise ValueError(
                 "raw_stop can only be called if the communication mode "
-                "is set to CommunicationMode.RAW")
+                "is set to CommunicationMode.RAW (current mode: {})".format(
+                    self._mode))
 
         self._raw_receiver = None
         self._mode = CommunicationMode.END_REQUEST_SENT
@@ -231,7 +240,8 @@ class CCPReceiveClient:
         if self._mode != CommunicationMode.RAW:
             raise ValueError(
                 "raw_send_data can only be called if the communication mode "
-                "is set to CommunicationMode.RAW")
+                "is set to CommunicationMode.RAW (current mode: {})".format(
+                    self._mode))
 
         if not isinstance(data, bytes):
             if isinstance(data, str):

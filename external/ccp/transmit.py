@@ -52,13 +52,15 @@ class BaseSRCDSClient:
         if self._mode != CommunicationMode.CONNECTED:
             raise ValueError(
                 "Communication mode can only be set once and cannot be set "
-                "before connection has been established")
+                "before connection has been established (current mode: "
+                "{})".format(self._mode))
 
         if mode not in (
                 CommunicationMode.REQUEST_BASED, CommunicationMode.RAW):
             raise ValueError(
                 "Communication mode should be set either to "
-                "CommunicationMode.REQUEST_BASED or CommunicationMode.RAW")
+                "CommunicationMode.REQUEST_BASED or CommunicationMode.RAW "
+                "(current mode: {})".format(self._mode))
 
         self._mode = mode
         plugin_name = self.plugin_name.encode('utf-8')
@@ -76,7 +78,7 @@ class BaseSRCDSClient:
             raise ValueError(
                 "send_data can only be called if the communication mode is "
                 "set to either CommunicationMode.REQUEST_BASED or "
-                "CommunicationMode.RAW")
+                "CommunicationMode.RAW (current mode: {})".format(self._mode))
 
         if not isinstance(data, bytes):
             if isinstance(data, str):
@@ -92,7 +94,7 @@ class BaseSRCDSClient:
             raise ValueError(
                 "stop can only be called if the communication mode is "
                 "set to either CommunicationMode.REQUEST_BASED or "
-                "CommunicationMode.RAW")
+                "CommunicationMode.RAW (current mode: {})".format(self._mode))
 
         self._mode = CommunicationMode.ENDED
         self.sock_client.send_message(IN_BYTES_COMM_END)
@@ -178,7 +180,8 @@ class AsyncSRCDSClient(BaseSRCDSClient, Thread):
 
     def run(self):
         if self._mode != CommunicationMode.UNDEFINED:
-            raise ValueError("SRCDSClient instances can be only started once")
+            raise ValueError("SRCDSClient instances can be only started once "
+                             "(current mode: {})".format(self._mode))
 
         self._mode = CommunicationMode.CONNECTING
         try:
