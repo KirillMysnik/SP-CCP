@@ -63,7 +63,12 @@ class AsyncSockClient(GameThread):
     def send_message(self, message):
         length = len(message)
         length_bytes = length.to_bytes(LENGTH_BYTES, byteorder='big')
-        self._write_sock(length_bytes + message)
+
+        try:
+            self._write_sock(length_bytes + message)
+        except OSError:
+            self.stop()
+            self.on_connection_abort()
 
     def run(self):
         self.running = True

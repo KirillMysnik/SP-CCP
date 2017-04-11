@@ -121,6 +121,13 @@ class AsyncSockClient(BaseSockClient, Thread):
             if self.running:
                 r, w, e = select([self.sock], [], [])
 
+    def send_message(self, message):
+        try:
+            super().send_message(message)
+        except OSError:
+            self.stop()
+            self.on_connection_abort()
+
     def on_message_receive(self, message):
         if self._message_receive_callback is not None:
             self._message_receive_callback(message)
